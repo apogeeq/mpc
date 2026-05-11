@@ -143,7 +143,7 @@ def setup():
     p.loadURDF("plane.urdf")
 
     robot = p.loadURDF(
-        r"c:\Users\devya\Desktop\nir4\triple_pendulum1.urdf",
+        r"triple_pendulum1.urdf",
         useFixedBase=True
     )
 
