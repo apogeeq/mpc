@@ -90,6 +90,31 @@ def denormalize(pts_n):
 s_des = normalize(s_des_px).flatten()
 
 # ============================================================
+# SPECIAL ERROR
+# 0 -> 2
+# 1 -> 3
+# 2 -> 0
+# 3 -> 1
+# ============================================================
+
+def special_error(current_pts, desired_pts):
+
+    mapping = [2,3,0,1]
+
+    err = 0.0
+
+    for i in range(4):
+
+        j = mapping[i]
+
+        dx = current_pts[i,0] - desired_pts[j,0]
+        dy = current_pts[i,1] - desired_pts[j,1]
+
+        err += dx**2 + dy**2
+
+    return np.sqrt(err)
+
+# ============================================================
 # ROBOT GEOMETRIC JACOBIAN
 # ============================================================
 
@@ -296,7 +321,6 @@ def detect_features(frame):
 
 def draw(frame, pts, err):
 
-    # current marker
     cv2.polylines(
         frame,
         [pts.astype(int)],
@@ -305,7 +329,6 @@ def draw(frame, pts, err):
         2
     )
 
-    # desired marker
     cv2.polylines(
         frame,
         [s_des_px.astype(int)],
@@ -313,22 +336,7 @@ def draw(frame, pts, err):
         (0,255,0),
         2
     )
-    """
-    # corner matching
-    for i in range(4):
 
-        color = corner_colors[i]
-
-        x = int(pts[i,0])
-        y = int(pts[i,1])
-
-        xd = int(s_des_px[i,0])
-        yd = int(s_des_px[i,1])
-
-        cv2.circle(frame,(x,y),6,color,-1)
-        cv2.circle(frame,(xd,yd),6,color,2)
-    """
-    # constraint box
     cv2.rectangle(
         frame,
         (xmin,ymin),
@@ -336,19 +344,9 @@ def draw(frame, pts, err):
         (255,255,0),
         1
     )
-    """
-    cv2.putText(
-        frame,
-        f"err={err:.4f}",
-        (10,30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (255,0,0),
-        2
-    )
-    """
+
 # ============================================================
-# PLOT
+# TRAJECTORY PLOT
 # ============================================================
 
 def plot_trajectories(initial_pts, traj):
@@ -371,7 +369,6 @@ def plot_trajectories(initial_pts, traj):
         label='Constraint'
     )
 
-    # initial marker
     initial_closed = np.vstack([
         initial_pts,
         initial_pts[0]
@@ -385,15 +382,14 @@ def plot_trajectories(initial_pts, traj):
         label='Initial marker'
     )
 
-    # desired marker
     desired_closed = np.vstack([
         s_des_px,
         s_des_px[0]
     ])
 
     plt.plot(
-        desired_closed[:,0] +4,
-        desired_closed[:,1] +3,
+        desired_closed[:,0] + 4,
+        desired_closed[:,1] + 3,
         'g-',
         linewidth=2,
         label='Desired marker'
@@ -426,6 +422,31 @@ def plot_trajectories(initial_pts, traj):
     plt.show()
 
 # ============================================================
+# ERROR PLOT
+# ============================================================
+
+def plot_error(errors):
+
+    iterations = np.arange(len(errors))
+
+    plt.figure(figsize=(8,5))
+
+    plt.plot(
+        iterations,
+        errors,
+        linewidth=2
+    )
+
+    plt.xlabel("Iteration")
+    plt.ylabel("Error")
+
+    plt.title("Tracking error")
+
+    plt.grid()
+
+    plt.show()
+
+# ============================================================
 # MPC PARAMETERS
 # ============================================================
 
@@ -439,9 +460,6 @@ Z = 0.5
 
 # ============================================================
 # PREDICTION MODEL
-# 
-#
-# s(k+1)=s(k)+dt*L_s*J*qdot
 # ============================================================
 
 def predict_features(s0, q0, U):
@@ -460,14 +478,12 @@ def predict_features(s0, q0, U):
 
         q1,q2,q3 = q
 
-        # geometric jacobian
         J = geometric_jacobian(
             q1,
             q2,
             q3
         )
 
-        # interaction matrix
         pts_n = s.reshape(4,2)
 
         Ls = interaction_matrix(
@@ -475,7 +491,6 @@ def predict_features(s0, q0, U):
             Z
         )
 
-        # image dynamics
         sdot = Ls @ (J @ qdot)
 
         s = s + dt*sdot
@@ -508,7 +523,6 @@ def cost_function(U, s0, q0):
 
         Jcost += lam_u*(qdot @ qdot)
 
-    # terminal cost
     e_terminal = traj[-1] - s_des
 
     Jcost += lam_terminal*(e_terminal @ e_terminal)
@@ -556,6 +570,8 @@ def run_mpc():
 
     trajectories = []
 
+    errors = []
+
     initial_pts = None
 
     while True:
@@ -573,6 +589,17 @@ def run_mpc():
 
             trajectories.append(pts.copy())
 
+            # =================================================
+            # SPECIAL ERROR
+            # =================================================
+
+            err_special = special_error(
+                pts,
+                s_des_px
+            )
+
+            errors.append(err_special)
+
             s0 = pts_n.flatten()
 
             q0 = np.array([
@@ -583,15 +610,7 @@ def run_mpc():
 
             ])
 
-            # =================================================
-            # INITIAL GUESS
-            # =================================================
-
             U0 = np.zeros(3*H)
-
-            # =================================================
-            # BOUNDS
-            # =================================================
 
             bounds = []
 
@@ -602,10 +621,6 @@ def run_mpc():
                     (-2,2),
                     (-2,2)
                 ]
-
-            # =================================================
-            # SOLVER
-            # =================================================
 
             result = opt.minimize(
 
@@ -630,15 +645,7 @@ def run_mpc():
                 }
             )
 
-            # =================================================
-            # FIRST CONTROL ACTION
-            # =================================================
-
             qdot = result.x[:3]
-
-            # =================================================
-            # APPLY CONTROL
-            # =================================================
 
             p.setJointMotorControl2(
                 robot,
@@ -664,13 +671,9 @@ def run_mpc():
                 force=100
             )
 
-            err = np.linalg.norm(
-                s0 - s_des
-            )
+            draw(frame, pts, err_special)
 
-            draw(frame, pts, err)
-
-            #print("error:", err)
+            print("error:", err_special)
 
         cv2.imshow("MPC", frame)
 
@@ -690,6 +693,10 @@ def run_mpc():
             initial_pts,
             trajectories
         )
+
+    if len(errors) > 0:
+
+        plot_error(errors)
 
 # ============================================================
 # RUN
