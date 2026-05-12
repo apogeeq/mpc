@@ -125,6 +125,31 @@ def interaction_matrix(pts_n, Z=0.5):
     return np.vstack(L)
 
 # ============================================================
+# SPECIAL ERROR
+# 0 -> 2
+# 1 -> 3
+# 2 -> 0
+# 3 -> 1
+# ============================================================
+
+def special_error(pts):
+
+    desired_map = [2,3,0,1]
+
+    err = 0.0
+
+    for i in range(4):
+
+        j = desired_map[i]
+
+        dx = pts[i,0] - s_des_px[j,0]
+        dy = pts[i,1] - s_des_px[j,1]
+
+        err += dx**2 + dy**2
+
+    return np.sqrt(err)
+
+# ============================================================
 # SETUP
 # ============================================================
 
@@ -143,7 +168,7 @@ def setup():
     p.loadURDF("plane.urdf")
 
     robot = p.loadURDF(
-        r"triple_pendulum1.urdf",
+        r"c:\Users\devya\Desktop\nir4\triple_pendulum1.urdf",
         useFixedBase=True
     )
 
@@ -309,58 +334,6 @@ def draw(frame, pts, err):
     )
 
     # ========================================================
-    # CORNERS
-    # ========================================================
-    """
-    for i in range(4):
-
-        color = corner_colors[i]
-
-        # current corner
-        x = int(pts[i,0])
-        y = int(pts[i,1])
-
-        cv2.circle(
-            frame,
-            (x,y),
-            6,
-            color,
-            -1
-        )
-
-        cv2.putText(
-            frame,
-            f"{i}",
-            (x+5,y+5),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            color,
-            2
-        )
-
-        # desired corner
-        xd = int(s_des_px[i,0])
-        yd = int(s_des_px[i,1])
-
-        cv2.circle(
-            frame,
-            (xd,yd),
-            6,
-            color,
-            2
-        )
-
-        cv2.putText(
-            frame,
-            f"{i}",
-            (xd+5,yd+5),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            color,
-            2
-        )
-    """
-    # ========================================================
     # CONSTRAINT BOX
     # ========================================================
 
@@ -381,17 +354,17 @@ def draw(frame, pts, err):
         (255,0,0),
         -1
     )
-    """
+
     cv2.putText(
         frame,
-        f"err={err:.4f}",
+        f"err={err:.2f}",
         (10,30),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
         (255,0,0),
         2
     )
-    """
+
 # ============================================================
 # PLOT TRAJECTORIES
 # ============================================================
@@ -448,7 +421,7 @@ def plot_trajectories(initial_pts, traj):
 
     plt.plot(
         desired_closed[:,0]+1,
-        desired_closed[:,1]+2,
+        desired_closed[:,1]-1,
         'g-',
         linewidth=2,
         label='Desired marker'
@@ -492,6 +465,32 @@ def plot_trajectories(initial_pts, traj):
     plt.show()
 
 # ============================================================
+# ERROR PLOT
+# ============================================================
+
+def plot_error(errors):
+
+    t = np.arange(len(errors))
+
+    plt.figure(figsize=(8,4))
+
+    plt.plot(
+        t,
+        errors,
+        linewidth=2
+    )
+
+    plt.xlabel("Iteration")
+
+    plt.ylabel("Special error")
+
+    plt.title("Error convergence")
+
+    plt.grid()
+
+    plt.show()
+
+# ============================================================
 # IBVS
 # ============================================================
 
@@ -506,6 +505,8 @@ def run_ibvs():
     trajectories = []
 
     initial_pts = None
+
+    error_history = []
 
     while True:
 
@@ -533,6 +534,14 @@ def run_ibvs():
             # =================================================
 
             e = s - s_des
+
+            # =================================================
+            # SPECIAL ERROR
+            # =================================================
+
+            special_err = special_error(pts)
+
+            error_history.append(special_err)
 
             # =================================================
             # INTERACTION MATRIX
@@ -627,11 +636,9 @@ def run_ibvs():
                 force=100
             )
 
-            err = np.linalg.norm(e)
+            draw(frame, pts, special_err)
 
-            draw(frame, pts, err)
-
-            print("error:", err)
+            print("error:", special_err)
 
         cv2.imshow("IBVS", frame)
 
@@ -650,7 +657,7 @@ def run_ibvs():
     cv2.destroyAllWindows()
 
     # =========================================================
-    # PLOT
+    # PLOTS
     # =========================================================
 
     if initial_pts is not None:
@@ -658,6 +665,10 @@ def run_ibvs():
         plot_trajectories(
             initial_pts,
             trajectories
+        )
+
+        plot_error(
+            error_history
         )
 
 # ============================================================
