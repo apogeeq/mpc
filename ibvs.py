@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 import cv2.aruco as aruco
 import matplotlib.pyplot as plt
+import time
 
 # ============================================================
 # CAMERA PARAMETERS
@@ -44,10 +45,10 @@ ymin, ymax = 60, 260
 # ============================================================
 
 corner_colors = [
-    (0,0,255),     # red
-    (0,255,0),     # green
-    (255,0,0),     # blue
-    (0,255,255)    # yellow
+    (0,0,255),
+    (0,255,0),
+    (255,0,0),
+    (0,255,255)
 ]
 
 # ============================================================
@@ -126,10 +127,6 @@ def interaction_matrix(pts_n, Z=0.5):
 
 # ============================================================
 # SPECIAL ERROR
-# 0 -> 2
-# 1 -> 3
-# 2 -> 0
-# 3 -> 1
 # ============================================================
 
 def special_error(pts):
@@ -309,10 +306,6 @@ def detect_features(frame):
 
 def draw(frame, pts, err):
 
-    # ========================================================
-    # CURRENT MARKER
-    # ========================================================
-
     cv2.polylines(
         frame,
         [pts.astype(int)],
@@ -321,10 +314,6 @@ def draw(frame, pts, err):
         2
     )
 
-    # ========================================================
-    # DESIRED MARKER
-    # ========================================================
-
     cv2.polylines(
         frame,
         [s_des_px.astype(int)],
@@ -332,10 +321,6 @@ def draw(frame, pts, err):
         (0,255,0),
         2
     )
-
-    # ========================================================
-    # CONSTRAINT BOX
-    # ========================================================
 
     cv2.rectangle(
         frame,
@@ -373,10 +358,6 @@ def plot_trajectories(initial_pts, traj):
 
     plt.figure(figsize=(8,8))
 
-    # ========================================================
-    # CONSTRAINT
-    # ========================================================
-
     constraint = np.array([
         [xmin,ymin],
         [xmax,ymin],
@@ -393,10 +374,6 @@ def plot_trajectories(initial_pts, traj):
         label='Constraint'
     )
 
-    # ========================================================
-    # INITIAL MARKER
-    # ========================================================
-
     initial_closed = np.vstack([
         initial_pts,
         initial_pts[0]
@@ -410,26 +387,18 @@ def plot_trajectories(initial_pts, traj):
         label='Initial marker'
     )
 
-    # ========================================================
-    # DESIRED MARKER
-    # ========================================================
-
     desired_closed = np.vstack([
         s_des_px,
         s_des_px[0]
     ])
 
     plt.plot(
-        desired_closed[:,0]+1,
-        desired_closed[:,1]-1,
+        desired_closed[:,0]+4,
+        desired_closed[:,1]+2,
         'g-',
         linewidth=2,
         label='Desired marker'
     )
-
-    # ========================================================
-    # TRAJECTORIES
-    # ========================================================
 
     traj = np.array(traj)
 
@@ -453,8 +422,8 @@ def plot_trajectories(initial_pts, traj):
     plt.xlim([0,width])
     plt.ylim([height,0])
 
-    plt.xlabel("u")
-    plt.ylabel("v")
+    plt.xlabel("x")
+    plt.ylabel("y")
 
     plt.title("Image Feature Trajectories")
 
@@ -468,21 +437,19 @@ def plot_trajectories(initial_pts, traj):
 # ERROR PLOT
 # ============================================================
 
-def plot_error(errors):
-
-    t = np.arange(len(errors))
+def plot_error(times, errors):
 
     plt.figure(figsize=(8,4))
 
     plt.plot(
-        t,
+        times,
         errors,
         linewidth=2
     )
 
-    plt.xlabel("Iteration")
+    plt.xlabel("Time [s]")
 
-    plt.ylabel("Special error")
+    plt.ylabel("Error")
 
     plt.title("Error convergence")
 
@@ -498,7 +465,7 @@ def run_ibvs():
 
     robot,j1,j2,j3,cam = setup()
 
-    lam = 2.0
+    lam = 4.0
     mu = 0.01
     Z = 0.5
 
@@ -507,6 +474,9 @@ def run_ibvs():
     initial_pts = None
 
     error_history = []
+    time_history = []
+
+    start_time = time.time()
 
     while True:
 
@@ -523,38 +493,22 @@ def run_ibvs():
 
             trajectories.append(pts.copy())
 
-            # =================================================
-            # CURRENT FEATURES
-            # =================================================
-
             s = pts_n.flatten()
 
-            # =================================================
-            # ERROR
-            # =================================================
-
             e = s - s_des
-
-            # =================================================
-            # SPECIAL ERROR
-            # =================================================
 
             special_err = special_error(pts)
 
             error_history.append(special_err)
 
-            # =================================================
-            # INTERACTION MATRIX
-            # =================================================
+            current_time = time.time() - start_time
+
+            time_history.append(current_time)
 
             Ls = interaction_matrix(
                 pts_n,
                 Z
             )
-
-            # =================================================
-            # DAMPED PSEUDOINVERSE
-            # =================================================
 
             Ls_pinv = (
                 Ls.T @
@@ -564,33 +518,17 @@ def run_ibvs():
                 )
             )
 
-            # =================================================
-            # CAMERA VELOCITY
-            # =================================================
-
             vc = -lam * (Ls_pinv @ e)
-
-            # =================================================
-            # CURRENT JOINTS
-            # =================================================
 
             q1 = p.getJointState(robot,j1)[0]
             q2 = p.getJointState(robot,j2)[0]
             q3 = p.getJointState(robot,j3)[0]
-
-            # =================================================
-            # GEOMETRIC JACOBIAN
-            # =================================================
 
             J = geometric_jacobian(
                 q1,
                 q2,
                 q3
             )
-
-            # =================================================
-            # JOINT VELOCITIES
-            # =================================================
 
             J_pinv = (
                 J.T @
@@ -607,10 +545,6 @@ def run_ibvs():
                 -2.0,
                 2.0
             )
-
-            # =================================================
-            # APPLY CONTROL
-            # =================================================
 
             p.setJointMotorControl2(
                 robot,
@@ -644,10 +578,6 @@ def run_ibvs():
 
         key = cv2.waitKey(1)
 
-        # =====================================================
-        # STOP BUTTON
-        # =====================================================
-
         if key == ord('q'):
 
             break
@@ -655,10 +585,6 @@ def run_ibvs():
     p.disconnect()
 
     cv2.destroyAllWindows()
-
-    # =========================================================
-    # PLOTS
-    # =========================================================
 
     if initial_pts is not None:
 
@@ -668,6 +594,7 @@ def run_ibvs():
         )
 
         plot_error(
+            time_history,
             error_history
         )
 
