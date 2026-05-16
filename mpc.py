@@ -5,6 +5,7 @@ import cv2
 import cv2.aruco as aruco
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
+import time
 
 # ============================================================
 # CAMERA PARAMETERS
@@ -91,10 +92,6 @@ s_des = normalize(s_des_px).flatten()
 
 # ============================================================
 # SPECIAL ERROR
-# 0 -> 2
-# 1 -> 3
-# 2 -> 0
-# 3 -> 1
 # ============================================================
 
 def special_error(current_pts, desired_pts):
@@ -345,6 +342,16 @@ def draw(frame, pts, err):
         1
     )
 
+    cv2.putText(
+        frame,
+        f"err={err:.2f}",
+        (10,30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255,0,0),
+        2
+    )
+
 # ============================================================
 # TRAJECTORY PLOT
 # ============================================================
@@ -389,7 +396,7 @@ def plot_trajectories(initial_pts, traj):
 
     plt.plot(
         desired_closed[:,0] + 4,
-        desired_closed[:,1] + 3,
+        desired_closed[:,1] +2,
         'g-',
         linewidth=2,
         label='Desired marker'
@@ -411,8 +418,8 @@ def plot_trajectories(initial_pts, traj):
     plt.xlim([0,width])
     plt.ylim([height,0])
 
-    plt.xlabel("u")
-    plt.ylabel("v")
+    plt.xlabel("x")
+    plt.ylabel("y")
 
     plt.title("MPC trajectories")
 
@@ -425,22 +432,20 @@ def plot_trajectories(initial_pts, traj):
 # ERROR PLOT
 # ============================================================
 
-def plot_error(errors):
-
-    iterations = np.arange(len(errors))
+def plot_error(times, errors):
 
     plt.figure(figsize=(8,5))
 
     plt.plot(
-        iterations,
+        times,
         errors,
         linewidth=2
     )
 
-    plt.xlabel("Iteration")
+    plt.xlabel("Time [s]")
     plt.ylabel("Error")
 
-    plt.title("Tracking error")
+    plt.title("Error convergence")
 
     plt.grid()
 
@@ -450,7 +455,7 @@ def plot_error(errors):
 # MPC PARAMETERS
 # ============================================================
 
-H = 5
+H = 2
 dt = 0.08
 
 lam_u = 0.01
@@ -571,8 +576,11 @@ def run_mpc():
     trajectories = []
 
     errors = []
+    times = []
 
     initial_pts = None
+
+    start_time = time.time()
 
     while True:
 
@@ -589,16 +597,16 @@ def run_mpc():
 
             trajectories.append(pts.copy())
 
-            # =================================================
-            # SPECIAL ERROR
-            # =================================================
-
             err_special = special_error(
                 pts,
                 s_des_px
             )
 
             errors.append(err_special)
+
+            current_time = time.time() - start_time
+
+            times.append(current_time)
 
             s0 = pts_n.flatten()
 
@@ -696,7 +704,10 @@ def run_mpc():
 
     if len(errors) > 0:
 
-        plot_error(errors)
+        plot_error(
+            times,
+            errors
+        )
 
 # ============================================================
 # RUN
